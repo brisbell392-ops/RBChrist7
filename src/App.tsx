@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Download } from 'lucide-react';
 import { DEFAULT_MINISTRY_PROFILE, SEED_VIDEOS } from './data/seedVideos';
 import type {
   ActiveTab,
@@ -7,6 +8,7 @@ import type {
   SongPdfItem,
   VideoItem,
 } from './types/ministry';
+import { downloadMinistryExport, type ExportKind } from './utils/download';
 import { Navbar } from './components/Navbar';
 import { HomeView } from './components/HomeView';
 import { SermonsView } from './components/SermonsView';
@@ -23,6 +25,22 @@ export default function App() {
   const [songs, setSongs] = useState<SongPdfItem[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [dailyVerseSeed, setDailyVerseSeed] = useState<CuratedVerse | null>(null);
+  const [exportingKind, setExportingKind] = useState<ExportKind | null>(null);
+  const [exportMessage, setExportMessage] = useState('');
+
+  const handleFooterExport = async (kind: ExportKind) => {
+    setExportingKind(kind);
+    setExportMessage('');
+    try {
+      const result = await downloadMinistryExport(kind);
+      const kb = Math.max(1, Math.round(result.sizeBytes / 1024));
+      setExportMessage(`Saved ${result.fileName} (${kb} KB).`);
+    } catch (err) {
+      setExportMessage(err instanceof Error ? err.message : 'Download failed.');
+    } finally {
+      setExportingKind(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -199,6 +217,25 @@ export default function App() {
               Songs
             </button>
             <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => handleFooterExport('webpage')}
+              disabled={exportingKind !== null}
+              className="inline-flex cursor-pointer items-center gap-1.5 font-medium text-[#1E3A5F] hover:text-[#9A3412] disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>{exportingKind === 'webpage' ? 'Saving HTML...' : 'Download Webpage (.html)'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFooterExport('archive')}
+              disabled={exportingKind !== null}
+              className="inline-flex cursor-pointer items-center gap-1.5 font-medium text-[#1E3A5F] hover:text-[#9A3412] disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>{exportingKind === 'archive' ? 'Zipping Site...' : 'Site Archive (.zip)'}</span>
+            </button>
+            <span aria-hidden="true">·</span>
             <a
               href={`mailto:${profile.contactEmail}`}
               className="hover:text-[#1C1917]"
@@ -207,6 +244,11 @@ export default function App() {
             </a>
           </div>
         </div>
+        {exportMessage && (
+          <p role="status" className="mx-auto mt-3 max-w-7xl px-4 text-xs font-medium text-[#14532D] sm:px-6 lg:px-8">
+            {exportMessage}
+          </p>
+        )}
       </footer>
     </div>
   );

@@ -2,7 +2,7 @@ import type {
   BibleChapterData,
   BibleVersionKey,
   CuratedVerse,
-} from '../types/ministry';
+} from '../types/ministry.ts';
 
 export const BIBLE_VERSIONS: { key: BibleVersionKey; label: string; fullName: string }[] = [
   { key: 'KJV', label: 'KJV', fullName: 'King James Version' },

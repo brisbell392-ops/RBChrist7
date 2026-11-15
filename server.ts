@@ -4,31 +4,33 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import multer from 'multer';
+import JSZip from 'jszip';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
-import { createServer as createViteServer } from 'vite';
 
-import { DEFAULT_MINISTRY_PROFILE, SEED_VIDEOS } from './src/data/seedVideos';
+import { generateStandaloneHtml } from './src/utils/exportWebpage.ts';
+
+import { DEFAULT_MINISTRY_PROFILE, SEED_VIDEOS } from './src/data/seedVideos.ts';
 import type {
   BibleChapterData,
   MinistryProfile,
   SongPdfItem,
   VideoCategory,
   VideoItem,
-} from './src/types/ministry';
+} from './src/types/ministry.ts';
 import {
   buildYouTubeWatchUrl,
   categorizeSermonTitle,
   extractYouTubeId,
-} from './src/utils/youtube';
+} from './src/utils/youtube.ts';
 import {
   BIBLE_CHAPTERS,
   CURATED_VERSES,
   buildDefaultImagePrompt,
   pickRandomVerse,
-} from './src/utils/bible';
+} from './src/utils/bible.ts';
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const DB_PATH = path.join(DATA_DIR, 'db.json');
@@ -899,8 +901,140 @@ Desired Visual Style: ${artStyle}
     res.json({ deleted: song.id });
   });
 
+  // Webpage & Full Site Archive Export
+  const buildExportAssets = () => {
+    const publicEmblem = path.resolve(
+      process.cwd(),
+      'public/assets/aistudio/WhatsApp_Image_2026-11-15_at_11.03.38_PM_218d6ff4.jpeg'
+    );
+    const distEmblem = path.resolve(
+      process.cwd(),
+      'dist/assets/aistudio/WhatsApp_Image_2026-11-15_at_11.03.38_PM_218d6ff4.jpeg'
+    );
+    const emblemPath = fs.existsSync(publicEmblem) ? publicEmblem : distEmblem;
+    let emblemBuffer: Buffer | null = null;
+    let emblemDataUri: string | undefined;
+    if (fs.existsSync(emblemPath)) {
+      emblemBuffer = fs.readFileSync(emblemPath);
+      emblemDataUri = `data:image/jpeg;base64,${emblemBuffer.toString('base64')}`;
+    }
+
+    const songPdfDataUris: Record<string, string> = {};
+    const songPdfBuffers: Array<{ fileName: string; buffer: Buffer }> = [];
+
+    for (const song of db.songs) {
+      const safeName = path.basename(song.fileName);
+      const pdfPath = path.join(UPLOADS_DIR, safeName);
+      if (fs.existsSync(pdfPath)) {
+        const pdfBuffer = fs.readFileSync(pdfPath);
+        songPdfBuffers.push({ fileName: safeName, buffer: pdfBuffer });
+        if (pdfBuffer.byteLength <= 2 * 1024 * 1024) {
+          songPdfDataUris[song.id] = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`;
+        }
+      }
+    }
+
+    return { emblemBuffer, emblemDataUri, songPdfDataUris, songPdfBuffers };
+  };
+
+  app.get('/api/export/webpage', (_req, res) => {
+    const { emblemDataUri, songPdfDataUris } = buildExportAssets();
+    const html = generateStandaloneHtml({
+      profile: db.ministry,
+      videos: db.videos,
+      songs: db.songs,
+      chapters: BIBLE_CHAPTERS,
+      verses: CURATED_VERSES,
+      emblemDataUri,
+      songPdfDataUris,
+      generatedAt: new Date().toISOString(),
+    });
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="righteous-branch-of-christ-ministry.html"'
+    );
+    res.send(html);
+  });
+
+  app.get('/api/export/archive', async (_req, res) => {
+    try {
+      const { emblemBuffer, emblemDataUri, songPdfDataUris, songPdfBuffers } = buildExportAssets();
+      const generatedAt = new Date().toISOString();
+
+      const html = generateStandaloneHtml({
+        profile: db.ministry,
+        videos: db.videos,
+        songs: db.songs,
+        chapters: BIBLE_CHAPTERS,
+        verses: CURATED_VERSES,
+        emblemDataUri,
+        songPdfDataUris,
+        generatedAt,
+      });
+
+      const zip = new JSZip();
+      zip.file('index.html', html);
+
+      if (emblemBuffer) {
+        zip.file('assets/emblem.jpeg', emblemBuffer);
+      }
+
+      for (const pdf of songPdfBuffers) {
+        zip.file(`songs/${pdf.fileName}`, pdf.buffer);
+      }
+
+      zip.file(
+        'data/ministry-backup.json',
+        JSON.stringify(
+          {
+            exportedAt: generatedAt,
+            ministry: db.ministry,
+            videos: db.videos,
+            songs: db.songs,
+          },
+          null,
+          2
+        )
+      );
+
+      zip.file(
+        'README.txt',
+        [
+          `${db.ministry.name} — Offline Website Archive`,
+          `Exported: ${generatedAt}`,
+          '',
+          'Contents:',
+          '- index.html: Complete standalone webpage (open in any browser on desktop or mobile)',
+          '- assets/emblem.jpeg: Ministry cross & vine emblem image',
+          '- songs/*.pdf: Uploaded congregation song sheet PDFs',
+          '- data/ministry-backup.json: Complete backup of ministry profile, video links, and song metadata',
+          '',
+          'Note: YouTube sermon playback inside index.html streams directly from YouTube when online.',
+        ].join('\n')
+      );
+
+      const archiveBuffer = await zip.generateAsync({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      });
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="righteous-branch-website-archive.zip"'
+      );
+      res.send(archiveBuffer);
+    } catch {
+      res.status(500).json({ error: 'Failed to generate website archive.' });
+    }
+  });
+
   // Vite or Static Frontend
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

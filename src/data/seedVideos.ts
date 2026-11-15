@@ -1,5 +1,5 @@
-import type { MinistryProfile, VideoItem } from '../types/ministry';
-import { categorizeSermonTitle, extractYouTubeId } from '../utils/youtube';
+import type { MinistryProfile, VideoItem } from '../types/ministry.ts';
+import { categorizeSermonTitle, extractYouTubeId } from '../utils/youtube.ts';
 
 export const DEFAULT_MINISTRY_PROFILE: MinistryProfile = {
   name: 'Righteous Branch of Christ Ministry',

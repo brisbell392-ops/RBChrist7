@@ -1,5 +1,7 @@
-import { ArrowRight, BookOpen, ExternalLink, FileText, Sparkles, Tv } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowRight, BookOpen, Download, ExternalLink, FileText, Sparkles, Tv } from 'lucide-react';
 import type { ActiveTab, MinistryProfile, VideoItem } from '../types/ministry';
+import { downloadMinistryExport } from '../utils/download';
 import { buildYouTubeEmbedUrl, buildYouTubeWatchUrl } from '../utils/youtube';
 import { VideoThumbnail } from './VideoThumbnail';
 
@@ -21,6 +23,22 @@ export function HomeView({
   songCount,
 }: HomeViewProps) {
   const featuredList = videos.slice(0, 6);
+  const [downloadingHtml, setDownloadingHtml] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState('');
+
+  const handleSaveWebpage = async () => {
+    setDownloadingHtml(true);
+    setDownloadStatus('');
+    try {
+      const result = await downloadMinistryExport('webpage');
+      const kb = Math.max(1, Math.round(result.sizeBytes / 1024));
+      setDownloadStatus(`Saved ${result.fileName} (${kb} KB) to your device.`);
+    } catch (err) {
+      setDownloadStatus(err instanceof Error ? err.message : 'Download failed.');
+    } finally {
+      setDownloadingHtml(false);
+    }
+  };
 
   return (
     <div className="space-y-16 pb-20">
@@ -61,7 +79,21 @@ export function HomeView({
                 <BookOpen className="h-4 w-4" />
                 <span>Parallel Bible</span>
               </button>
+              <button
+                type="button"
+                onClick={handleSaveWebpage}
+                disabled={downloadingHtml}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-[#D6CEBE] bg-white px-5 py-3 text-sm font-semibold text-[#1C1917] transition-colors hover:border-[#1E3A5F] hover:text-[#1E3A5F] disabled:opacity-60"
+              >
+                <Download className="h-4 w-4" />
+                <span>{downloadingHtml ? 'Preparing Webpage...' : 'Download Webpage'}</span>
+              </button>
             </div>
+            {downloadStatus && (
+              <p role="status" className="text-xs font-medium text-[#14532D]">
+                {downloadStatus}
+              </p>
+            )}
 
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[#E5DEC9] pt-5 text-xs text-[#57534E]">
               <span className="font-mono tabular-nums">{videos.length} Video Teachings</span>

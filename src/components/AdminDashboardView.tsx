@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import {
+  Archive,
   Check,
+  Download,
   ExternalLink,
   Lock,
   LogOut,
@@ -11,6 +13,7 @@ import {
   Upload,
 } from 'lucide-react';
 import type { MinistryProfile, SongPdfItem, VideoCategory, VideoItem } from '../types/ministry';
+import { downloadMinistryExport, type ExportKind } from '../utils/download';
 import { buildYouTubeEmbedUrl, categorizeSermonTitle, extractYouTubeId } from '../utils/youtube';
 
 interface AdminDashboardViewProps {
@@ -36,7 +39,7 @@ const VIDEO_CATEGORIES: Array<Exclude<VideoCategory, 'All'>> = [
   'Worship & Praise',
 ];
 
-type AdminSubTab = 'add-video' | 'manage-videos' | 'songs' | 'ministry';
+type AdminSubTab = 'add-video' | 'manage-videos' | 'songs' | 'ministry' | 'export';
 
 export function AdminDashboardView({
   isAuthenticated,
@@ -87,6 +90,26 @@ export function AdminDashboardView({
   const [profileForm, setProfileForm] = useState<MinistryProfile>(profile);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileFeedback, setProfileFeedback] = useState('');
+
+  // Export state
+  const [exportingKind, setExportingKind] = useState<ExportKind | null>(null);
+  const [exportStatus, setExportStatus] = useState('');
+  const [exportError, setExportError] = useState('');
+
+  const handleAdminExport = async (kind: ExportKind) => {
+    setExportingKind(kind);
+    setExportStatus('');
+    setExportError('');
+    try {
+      const result = await downloadMinistryExport(kind);
+      const kb = Math.max(1, Math.round(result.sizeBytes / 1024));
+      setExportStatus(`Downloaded ${result.fileName} (${kb} KB) to your device.`);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed.');
+    } finally {
+      setExportingKind(null);
+    }
+  };
 
   const previewYoutubeId = extractYouTubeId(youtubeUrl);
 
@@ -373,6 +396,7 @@ export function AdminDashboardView({
           { id: 'manage-videos' as const, label: `Manage Videos (${videos.length})` },
           { id: 'songs' as const, label: `Song PDFs (${songs.length})` },
           { id: 'ministry' as const, label: 'Home Page About' },
+          { id: 'export' as const, label: 'Export Website' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -829,6 +853,78 @@ export function AdminDashboardView({
             {savingProfile ? 'Saving...' : 'Save Ministry Description'}
           </button>
         </form>
+      )}
+
+      {/* Tab 5: Export Website to Device */}
+      {subTab === 'export' && (
+        <div className="space-y-6">
+          {exportStatus && (
+            <div role="status" className="rounded-md border border-[#14532D]/30 bg-[#14532D]/5 px-4 py-3 text-sm font-medium text-[#14532D]">
+              {exportStatus}
+            </div>
+          )}
+          {exportError && (
+            <div role="alert" className="rounded-md border border-[#9A3412]/30 bg-[#9A3412]/5 px-4 py-3 text-sm font-medium text-[#9A3412]">
+              {exportError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="flex flex-col justify-between rounded-xl border border-[#E5DEC9] bg-white p-6">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold tracking-wider text-[#9A3412] uppercase">
+                  Single-File Offline Webpage
+                </p>
+                <h2 className="font-display text-2xl font-bold text-[#1C1917]">
+                  Standalone HTML Webpage
+                </h2>
+                <p className="text-sm leading-relaxed text-[#57534E]">
+                  Downloads a self-contained <span className="font-mono text-xs">.html</span> file that opens directly in any desktop or mobile browser with no server needed. Includes the ministry emblem, all {videos.length} sermons, searchable video catalog, parallel Bible study chapters, daily verse generator, and {songs.length} song sheets with embedded PDF downloads.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAdminExport('webpage')}
+                disabled={exportingKind !== null}
+                className="mt-6 inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-[#1E3A5F] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#162C49] disabled:opacity-60"
+              >
+                <Download className="h-4 w-4" />
+                <span>
+                  {exportingKind === 'webpage'
+                    ? 'Preparing HTML Webpage...'
+                    : 'Download Webpage (.html)'}
+                </span>
+              </button>
+            </div>
+
+            <div className="flex flex-col justify-between rounded-xl border border-[#E5DEC9] bg-white p-6">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold tracking-wider text-[#9A3412] uppercase">
+                  Complete Website &amp; Media Package
+                </p>
+                <h2 className="font-display text-2xl font-bold text-[#1C1917]">
+                  Full Site Archive (.zip)
+                </h2>
+                <p className="text-sm leading-relaxed text-[#57534E]">
+                  Downloads a compressed <span className="font-mono text-xs">.zip</span> folder containing <span className="font-mono text-xs">index.html</span>, the ministry emblem image, all {songs.length} raw song PDF files, a complete <span className="font-mono text-xs">ministry-backup.json</span> data backup, and hosting instructions.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAdminExport('archive')}
+                disabled={exportingKind !== null}
+                className="mt-6 inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-[#1E3A5F] bg-white px-5 py-2.5 text-sm font-semibold text-[#1E3A5F] hover:bg-[#1E3A5F] hover:text-white disabled:opacity-60"
+              >
+                <Archive className="h-4 w-4" />
+                <span>
+                  {exportingKind === 'archive'
+                    ? 'Packaging ZIP Archive...'
+                    : 'Download Site Archive (.zip)'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

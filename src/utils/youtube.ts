@@ -1,4 +1,4 @@
-import type { VideoCategory, VideoItem } from '../types/ministry';
+import type { VideoCategory, VideoItem } from '../types/ministry.ts';
 
 const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 
