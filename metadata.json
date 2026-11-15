@@ -1,0 +1,6 @@
+{
+  "name": "Righteous Branch of Christ Ministry",
+  "description": "Dynamic Christian ministry portal featuring embedded YouTube sermons, parallel Bible reader with translations, daily verse card generator, song PDF library, and secure admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
